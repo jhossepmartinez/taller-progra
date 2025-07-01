@@ -28,7 +28,6 @@ import warnings
 # registered - number of registered user rentals initiated
 # count - number of total rentals
 
-warnings.filterwarnings("ignore")
 
 # Load data
 train = pd.read_csv("./input/train.csv")
@@ -84,7 +83,7 @@ test["cluster"] = DBSCAN(eps=eps, min_samples=5).fit_predict(
     test[["hour", "day_of_week"]]
 )
 
-# Visualize clusters
+# Visualize clusters gpt (no cacho)
 plt.figure(figsize=(12, 6))
 for c in train["cluster"].unique():
     cluster_data = train[train["cluster"] == c]
@@ -99,50 +98,41 @@ plt.grid(True)
 plt.savefig("temporal_clusters.png")
 print("Saved cluster visualization")
 
-# ====================== DATA PREPROCESSING ======================
+# PROCESS DATA (add missing values)
 # Handle missing values
 numeric_features = ["temp", "atemp", "humidity", "windspeed"]
-imputer = SimpleImputer(strategy="median")
-train[numeric_features] = imputer.fit_transform(train[numeric_features])
-test[numeric_features] = imputer.transform(test[numeric_features])
+imputer = SimpleImputer(strategy="median")  # replace missing values with median
+train[numeric_features] = imputer.fit_transform(
+    train[numeric_features]
+)  # add missing values
+test[numeric_features] = imputer.transform(test[numeric_features])  # add missing values
 
-# Scale features
-scaler = StandardScaler()
-scaled_cols = [f"{col}_scaled" for col in numeric_features]
-train_scaled = scaler.fit_transform(train[numeric_features])
-test_scaled = scaler.transform(test[numeric_features])
-train = pd.concat(
-    [train, pd.DataFrame(train_scaled, columns=scaled_cols, index=train.index)], axis=1
-)
-test = pd.concat(
-    [test, pd.DataFrame(test_scaled, columns=scaled_cols, index=test.index)], axis=1
-)
-
-# ====================== RANDOM FOREST MODEL ======================
-features = (
-    numeric_features
-    + scaled_cols
-    + ["hour_sin", "hour_cos", "cluster", "is_weekend", "bad_weather"]
-)
+features = numeric_features + [
+    "hour_sin",
+    "hour_cos",
+    "cluster",
+    "is_weekend",
+    "bad_weather",
+]
 
 X = train[features]
 y = np.log1p(train["count"])  # Log-transform target
 
-# Train-test split
+# Train-test split 80/20
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Optimized Random Forest
+# Keep depth at 7 to avoid overfitting
 rf = RandomForestRegressor(
-    n_estimators=200, max_depth=12, min_samples_split=5, random_state=42, n_jobs=-1
+    n_estimators=200, max_depth=7, min_samples_split=5, random_state=42, n_jobs=-1
 )
 rf.fit(X_train, y_train)
 
-# ====================== EVALUATION ======================
+# Results ~.5 is good enough
 val_pred = np.expm1(rf.predict(X_val))  # Reverse log transform
 rmsle = np.sqrt(mean_squared_log_error(np.expm1(y_val), val_pred))
-print(f"\nValidation RMSLE: {rmsle:.4f}")
+print(f"\nValidation RMSLE: {rmsle}")
 
-# Feature importance
+# Feature importance (for future improvs)
 plt.figure(figsize=(12, 6))
 importances = rf.feature_importances_
 sorted_idx = np.argsort(importances)[::-1]
